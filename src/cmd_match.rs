@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::ArgMatches;
+use colored::Colorize;
 use nalgebra::DVector;
 use rayon::prelude::*;
 use std::fs::File;
@@ -10,7 +11,7 @@ pub fn match_fingerprints(matches: &ArgMatches) -> Result<()> {
 	// Load queries
 
 	let queries =
-		matches.values_of_os("fingerprint")
+		matches.values_of("fingerprint")
 			.unwrap()
 			.map(|x| {
 				let file = File::open(x)?;
@@ -26,6 +27,9 @@ pub fn match_fingerprints(matches: &ArgMatches) -> Result<()> {
 	let database : FingerprintDb = ciborium::de::from_reader(db_file)?;
 
 	// Run DTW
+
+	let mut matches_ok = 0;
+	let mut matches_fail = 0;
 
 	for q in queries {
 		let mut distances =
@@ -46,17 +50,40 @@ pub fn match_fingerprints(matches: &ArgMatches) -> Result<()> {
 
 		distances.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
-		println!("- Query: {:?}", q.0);
+		if !matches.is_present("verify") {
+			println!("- Query: {}", q.0);
 
-		for (i, d) in distances[0..5].iter().enumerate() {
-			println!("\t{}) {} - {}", i + 1, d.0, d.1);
+			for (i, d) in distances[0..5].iter().enumerate() {
+				println!("\t{}) {} - {}", i + 1, d.0, d.1);
 
-			if matches.is_present("verbose") {
-				for (r, d) in &d.2 {
-					println!("\t\t- {}: {}", r, d);
+				if matches.is_present("verbose") {
+					for (r, d) in &d.2 {
+						println!("\t\t- {}: {}", r, d);
+					}
+				}
+			}
+		} else {
+			let best_match = &distances[0];
+
+			if q.0 == best_match.0 || q.0.ends_with(&format!("/{}", best_match.0)) {
+				matches_ok += 1;
+				println!("- {} : {}", q.0, "Ok".green().bold());
+			} else {
+				matches_fail += 1;
+				println!("- {} : {}", q.0, "Fail".bright_red().bold());
+
+				if matches.is_present("verbose") {
+					println!("\t- Got {} with distance {}", best_match.0, best_match.1);
 				}
 			}
 		}
+	}
+
+	if matches.is_present("verify") {
+		println!("\n{}  {}",
+			format!("\u{2714} {}", matches_ok).green().bold(),
+			format!("\u{274C} {}", matches_fail).bright_red().bold()
+		);
 	}
 
 	Ok(())

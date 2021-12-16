@@ -19,6 +19,7 @@ fn main() {
 			SubCommand::with_name("match")
 				.about("Matches network fingerprints against the video database")
 				.display_order(1)
+				.arg(Arg::from_usage("--verify         'Check if the best result matches the filename'"))
 				.arg(Arg::from_usage("-v, --verbose    'Show more details about the matches'"))
 				.arg(Arg::from_usage("<fingerprint>... 'Files with network fingerprints'"))
 		)
