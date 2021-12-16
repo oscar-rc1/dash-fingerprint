@@ -2,11 +2,9 @@ use anyhow::Result;
 use clap::ArgMatches;
 use nalgebra::DVector;
 use rayon::prelude::*;
-use std::{ffi::OsString, fs::File, io::{BufRead, BufReader}};
+use std::fs::File;
 
-use crate::pdtw;
-
-const FINGERPRINT_HOME : &str = "videos/fingerprints";
+use crate::{pdtw, FingerprintDb, FINGERPRINT_DB_PATH};
 
 pub fn match_fingerprints(matches: &ArgMatches) -> Result<()> {
 	// Load queries
@@ -15,45 +13,34 @@ pub fn match_fingerprints(matches: &ArgMatches) -> Result<()> {
 		matches.values_of_os("fingerprint")
 			.unwrap()
 			.map(|x| {
-				let name = x.to_os_string();
-				let vector = load_csv(&name)?;
-				Ok((name, vector))
+				let file = File::open(x)?;
+				let query : DVector<f64> = ciborium::de::from_reader(file)?;
+
+				Ok((x, query))
 			})
 			.collect::<Result<Vec<_>>>()?;
 
 	// Load database
 
-	let database =
-		std::fs::read_dir(FINGERPRINT_HOME)?
-			.map(|x| {
-				let path = x?.path();
-				let name = path.file_stem().map(|x| x.to_os_string());
-				let ext = path.extension().map(|x| x.to_os_string());
-
-				Ok((ext, name, path.into_os_string()))
-			})
-			.filter(|x| {
-				if let Ok((Some(ext), Some(_), _)) = &x {
-					ext.to_ascii_lowercase() == "csv"
-				} else {
-					false
-				}
-			})
-			.map(|x| {
-				match x {
-					Ok(x) => Ok((x.1.unwrap(), load_csv(&x.2)?)),
-					Err(e) => Err(e),
-				}
-			})
-			.collect::<Result<Vec<_>>>()?;
+	let db_file = File::open(FINGERPRINT_DB_PATH)?;
+	let database : FingerprintDb = ciborium::de::from_reader(db_file)?;
 
 	// Run DTW
 
 	for q in queries {
 		let mut distances =
 			database.par_iter()
-				.map(|(name, template)| {
-					(name, pdtw::partial_dtw(&q.1, &template))
+				.map(|(name, streams)| {
+					let mut streams =
+						streams.par_iter()
+							.map(|(resolution, template)| {
+								(resolution, pdtw::partial_dtw(&q.1, &template))
+							})
+							.collect::<Vec<_>>();
+
+					streams.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+					(name, streams[0].1, streams)
 				})
 				.collect::<Vec<_>>();
 
@@ -62,20 +49,15 @@ pub fn match_fingerprints(matches: &ArgMatches) -> Result<()> {
 		println!("- Query: {:?}", q.0);
 
 		for (i, d) in distances[0..5].iter().enumerate() {
-			println!("\t{}) {:?} - {}", i + 1, d.0, d.1);
+			println!("\t{}) {} - {}", i + 1, d.0, d.1);
+
+			if matches.is_present("verbose") {
+				for (r, d) in &d.2 {
+					println!("\t\t- {}: {}", r, d);
+				}
+			}
 		}
 	}
 
 	Ok(())
-}
-
-fn load_csv(path: &OsString) -> Result<DVector<f64>> {
-	let reader = BufReader::new(File::open(path)?);
-
-	let values =
-		reader.lines()
-			.map(|x| Ok(x?.parse::<f64>()?))
-			.collect::<Result<Vec<_>>>()?;
-
-	Ok(values.into())
 }

@@ -1,10 +1,12 @@
 use anyhow::{bail, Result};
 use clap::{value_t, ArgMatches};
-use std::time::Duration;
+use nalgebra::DVector;
+use std::{fs::File, time::Duration};
 
 pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 	// Extract and validate parameters
 
+	let output = value_t!(matches, "output", String)?;
 	let interface = value_t!(matches, "interface", String)?;
 	let num_samples = value_t!(matches, "num-samples", usize)?;
 	let segment_length = value_t!(matches, "segment-length", i64)?;
@@ -28,7 +30,7 @@ pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 
 	// Run fingerprint process
 
-	let mut d_tr = vec![0f64; num_samples];
+	let mut d_tr = DVector::zeros(num_samples);
 	let mut rx_last = get_rx_bytes(&interface).unwrap();
 	let mut p_last = 0;
 	let mut p = 0;
@@ -44,7 +46,8 @@ pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 
 			if t >= segment_length {
 				if i != 0 {
-					d_tr[i] = ((p - p_last) as f64) / (p_last as f64);
+					let d = ((p - p_last) as f64) / (p_last as f64);
+					d_tr[i] = 1.0 / (1.0 + (-d).exp());
 				}
 
 				p_last = p;
@@ -68,14 +71,13 @@ pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 		std::thread::sleep(Duration::from_millis(1000));
 	}
 
-	// Dump to stdout
-
 	print_progress(1.0);
 	eprintln!("");
 
-	for d in d_tr {
-		println!("{}", 1.0 / (1.0 + (-d).exp()));
-	}
+	// Write to file
+
+	let output = File::create(output)?;
+	ciborium::ser::into_writer(&d_tr, output)?;
 
 	Ok(())
 }

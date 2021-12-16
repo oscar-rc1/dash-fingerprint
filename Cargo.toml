@@ -5,7 +5,9 @@ edition = "2021"
 
 [dependencies]
 anyhow   = "1"
+ciborium = "0.2"
 clap     = "2"
 colored  = "2"
-nalgebra = "0.29"
+nalgebra = { version = "0.29", features = ["serde-serialize"] }
 rayon    = "1"
+serde    = "1"

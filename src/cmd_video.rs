@@ -1,62 +1,94 @@
-use anyhow::{Context, Result};
-use clap::ArgMatches;
-use std::{fs::File, io::Write, path::Path};
+use anyhow::{bail, Context, Result};
+use clap::{value_t, ArgMatches};
+use std::{collections::HashMap, fs::File};
 
-const DASH_HOME : &str = "videos/dash";
+use crate::{FingerprintDb, FINGERPRINT_DB_PATH};
 
-pub fn fingerprint_video(matches: &ArgMatches) -> Result<()> {
-	let videos = match matches.occurrences_of("video") {
-		0 => enumerate_videos().unwrap(),
-		_ => matches.values_of("video").unwrap().map(|x| x.to_string()).collect(),
-	};
+const DASH_PATH   : &str    = "videos/dash";
+const RESOLUTIONS : &[&str] = &["480p", "720p", "1080p"];
 
-	for v in videos {
-		println!("- Processing {}", v);
-		process_video(&v)?;
+pub fn fingerprint_videos(matches: &ArgMatches) -> Result<()> {
+	if matches.occurrences_of("video") == 0 {
+		build_database()
+	} else {
+		dump_single(value_t!(matches, "video", String)?)
+	}
+}
+
+fn build_database() -> Result<()> {
+	let mut database : FingerprintDb = HashMap::new();
+
+	for entry in std::fs::read_dir(DASH_PATH)? {
+		let entry = entry?;
+		let path = entry.path().to_str().unwrap().to_string();
+		let name = entry.file_name().to_str().unwrap().to_string();
+
+		println!("- Fingerprinting {}", name);
+
+		let fingerprint =
+			fingerprint_dash(&path)?
+				.into_iter()
+				.map(|x| (x.0, x.1.into()))
+				.collect::<HashMap<_,_>>();
+
+		database.insert(name, fingerprint);
+	}
+
+	if database.len() == 0 {
+		bail!("No videos found, nothing to do.");
+	}
+
+	let output = File::create(FINGERPRINT_DB_PATH)?;
+	ciborium::ser::into_writer(&database, output)?;
+
+	println!("\n- Database written to {}", FINGERPRINT_DB_PATH);
+	Ok(())
+}
+
+fn dump_single(name: String) -> Result<()> {
+	let path = format!("{}/{}", DASH_PATH, name);
+	let fp = fingerprint_dash(&path)?;
+
+	for i in 0..fp[0].1.len() {
+		for j in 0..fp.len() {
+			if j != 0 {
+				print!(",");
+			}
+
+			print!("{}", fp[j].1[i]);
+		}
+
+		print!("\n");
 	}
 
 	Ok(())
 }
 
-fn enumerate_videos() -> Result<Vec<String>> {
+fn fingerprint_dash(path: &str) -> Result<Vec<(String, Vec<f64>)>> {
 	let mut result = vec![];
+	let mut segment_count = None;
 
-	for entry in std::fs::read_dir(DASH_HOME)? {
-		result.push(entry?.path().to_str().unwrap().to_string());
+	for r in RESOLUTIONS {
+		let fp = fingerprint_stream(path, &r)?;
+
+		if let Some(segment_count) = &segment_count {
+			if *segment_count != fp.len() {
+				bail!("Segment count mismatch: expected {}, got {}", segment_count, fp.len());
+			}
+		} else {
+			segment_count = Some(fp.len());
+		}
+
+		result.push((r.to_string(), fp));
 	}
 
 	Ok(result)
 }
 
-fn process_video(path: &String) -> Result<()> {
-	let name = Path::new(path).file_name().unwrap().to_str().unwrap();
-	let output_dir = format!("{}/../../fingerprints", path);
-
-	let _ = std::fs::create_dir_all(&output_dir);
-
-	for sub_entry in std::fs::read_dir(path)? {
-		let sub_entry = sub_entry?;
-		let resolution = sub_entry.file_name().into_string().unwrap();
-
-		if !sub_entry.metadata()?.is_dir() || resolution == "aac" {
-			continue;
-		}
-
-		let vec_r = fingerprint_stream(&path, &resolution)?;
-		let mut csv_file = File::create(format!("{}/{}_{}.csv", output_dir, name, resolution))?;
-
-		for r in vec_r {
-			write!(&mut csv_file, "{}\n", 1.0 / (1.0 + (-r).exp()))?;
-		}
-	}
-
-	Ok(())
-}
-
 fn fingerprint_stream(path: &str, resolution: &str) -> Result<Vec<f64>> {
 	let mut i = 1;
 	let mut a_last = 0;
-	let mut vec_r = vec![0f64];
+	let mut vec_r = vec![];
 
 	let path_video = format!("{}/{}", path, resolution);
 	let path_audio = format!("{}/aac", path);
@@ -76,7 +108,10 @@ fn fingerprint_stream(path: &str, resolution: &str) -> Result<Vec<f64>> {
 		};
 
 		if i != 1 {
-			vec_r.push(((a - a_last) as f64) / (a_last as f64));
+			let r = ((a - a_last) as f64) / (a_last as f64);
+			let r_norm = 1.0 / (1.0 + (-r).exp());
+
+			vec_r.push(r_norm);
 		}
 
 		i += 1;
