@@ -1,0 +1,9 @@
+/target
+
+/tests
+
+/videos/dash
+/videos/encoded
+/videos/fingerprints
+/videos/source/*
+!/videos/source/.keep

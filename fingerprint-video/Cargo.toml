@@ -1,0 +1,9 @@
+[package]
+name = "fingerprint-video"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow  = "1"
+colored = "2"
+clap    = "2"

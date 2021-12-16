@@ -1,0 +1,6 @@
+[workspace]
+members = [
+	"fingerprint-network",
+	"fingerprint-video",
+	"match-fingerprint"
+]
