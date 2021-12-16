@@ -42,8 +42,6 @@ pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 		let rx_rate = rx - rx_last;
 
 		if rx_rate >= epsilon {
-			p += rx_rate;
-
 			if t >= segment_length {
 				if i != 0 {
 					let d = ((p - p_last) as f64) / (p_last as f64);
@@ -60,6 +58,8 @@ pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 					break
 				}
 			}
+
+			p += rx_rate;
 		}
 
 		if p > 0 || i > 0 {
