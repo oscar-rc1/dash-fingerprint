@@ -26,6 +26,7 @@ fn main() {
 			SubCommand::with_name("network")
 				.about("Obtains a fingerprint from network traffic")
 				.display_order(2)
+				.arg(Arg::from_usage("--video [url]               'Opens the given URL in VLC before fingerprinting'"))
 				.arg(Arg::from_usage("-n, --num-samples [samples] 'Number of samples to obtain'").default_value("40"))
 				.arg(Arg::from_usage("-l, --segment-length [time] 'Segment length, in seconds'").default_value("4"))
 				.arg(Arg::from_usage("-e, --epsilon [throughput]  'Minimum data rate, in bytes/s'").default_value("100"))

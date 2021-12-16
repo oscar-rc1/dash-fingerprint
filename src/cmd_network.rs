@@ -1,7 +1,7 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use clap::{value_t, ArgMatches};
 use nalgebra::DVector;
-use std::{fs::File, time::Duration};
+use std::{fs::File, process::{Command, Stdio}, time::Duration};
 
 pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 	// Extract and validate parameters
@@ -27,6 +27,28 @@ pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 	if epsilon < 0 {
 		bail!("The minimum throughput must be non-negative");
 	}
+
+	// Open VLC if requested
+
+	let vlc = match value_t!(matches, "video", String) {
+		Ok(url) => {
+			let handle =
+				Command::new("vlc")
+					.arg(url)
+					.stdin(Stdio::null())
+					.stdout(Stdio::null())
+					.stderr(Stdio::null())
+					.spawn()
+					.context("Failed to spawn VLC")?;
+
+			print_progress(0.0);
+			std::thread::sleep(Duration::from_millis(10000));
+
+			Some(handle)
+		},
+
+		Err(_) => None,
+	};
 
 	// Run fingerprint process
 
@@ -78,6 +100,12 @@ pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 
 	let output = File::create(output)?;
 	ciborium::ser::into_writer(&d_tr, output)?;
+
+	// Wait for child process
+
+	if let Some(mut vlc) = vlc {
+		vlc.kill()?;
+	}
 
 	Ok(())
 }
