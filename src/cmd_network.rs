@@ -33,7 +33,7 @@ pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 	let vlc = match value_t!(matches, "video", String) {
 		Ok(url) => {
 			let handle =
-				Command::new("vlc")
+				Command::new("cvlc")
 					.arg(url)
 					.stdin(Stdio::null())
 					.stdout(Stdio::null())
