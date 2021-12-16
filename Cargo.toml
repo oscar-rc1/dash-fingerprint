@@ -1,6 +1,11 @@
-[workspace]
-members = [
-	"fingerprint-network",
-	"fingerprint-video",
-	"match-fingerprint"
-]
+[package]
+name = "dash-fp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow   = "1"
+clap     = "2"
+colored  = "2"
+nalgebra = "0.29"
+rayon    = "1"

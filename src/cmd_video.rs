@@ -1,16 +1,10 @@
 use anyhow::{Context, Result};
-use clap::{App, Arg};
-use colored::Colorize;
+use clap::ArgMatches;
 use std::{fs::File, io::Write, path::Path};
 
 const DASH_HOME : &str = "videos/dash";
 
-fn main() {
-	let matches = App::new("fingerprint-video")
-		.version("0.1.0")
-		.arg(Arg::from_usage("[video]... 'List of videos to be fingerprinted'"))
-		.get_matches();
-
+pub fn fingerprint_video(matches: &ArgMatches) -> Result<()> {
 	let videos = match matches.occurrences_of("video") {
 		0 => enumerate_videos().unwrap(),
 		_ => matches.values_of("video").unwrap().map(|x| x.to_string()).collect(),
@@ -18,12 +12,10 @@ fn main() {
 
 	for v in videos {
 		println!("- Processing {}", v);
-
-		if let Err(e) = process_video(&v) {
-			eprintln!("\t{} {:?}", "error:".bright_red().bold(), e);
-			std::process::exit(1);
-		}
+		process_video(&v)?;
 	}
+
+	Ok(())
 }
 
 fn enumerate_videos() -> Result<Vec<String>> {

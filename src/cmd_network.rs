@@ -1,24 +1,8 @@
 use anyhow::{bail, Result};
-use clap::{value_t, App, Arg, ArgMatches};
-use colored::Colorize;
+use clap::{value_t, ArgMatches};
 use std::time::Duration;
 
-fn main() {
-	let matches = App::new("fingerprint-network")
-		.version("0.1.0")
-		.arg(Arg::from_usage("-n, --num-samples [samples] 'Number of samples to obtain'").default_value("60"))
-		.arg(Arg::from_usage("-l, --segment-length [time] 'Segment length, in seconds'").default_value("4"))
-		.arg(Arg::from_usage("-e, --epsilon [throughput]  'Minimum data rate, in bytes/s'").default_value("100"))
-		.arg(Arg::from_usage("<interface>                 'Network interface to be monitored'"))
-		.get_matches();
-
-	if let Err(e) = fingerprint_network(&matches) {
-		eprintln!("{} {:?}", "error:".bright_red().bold(), e);
-		std::process::exit(1);
-	}
-}
-
-fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
+pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 	// Extract and validate parameters
 
 	let interface = value_t!(matches, "interface", String)?;
