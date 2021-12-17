@@ -3,7 +3,7 @@ use clap::ArgMatches;
 use colored::Colorize;
 use nalgebra::DVector;
 use rayon::prelude::*;
-use std::fs::File;
+use std::{fs::File, time::Instant};
 
 use crate::{pdtw, FingerprintDb, FINGERPRINT_DB_PATH};
 
@@ -28,6 +28,7 @@ pub fn match_fingerprints(matches: &ArgMatches) -> Result<()> {
 
 	// Run DTW
 
+	let start_time = Instant::now();
 	let mut matches_ok = 0;
 	let mut matches_fail = 0;
 
@@ -80,9 +81,10 @@ pub fn match_fingerprints(matches: &ArgMatches) -> Result<()> {
 	}
 
 	if matches.is_present("verify") {
-		println!("\n{}  {}",
+		println!("\n{}  {}  {}",
 			format!("\u{2714} {}", matches_ok).green().bold(),
-			format!("\u{274C} {}", matches_fail).bright_red().bold()
+			format!("\u{274C} {}", matches_fail).bright_red().bold(),
+			format!("\u{1F554} {:?}", start_time.elapsed()).blue().bold()
 		);
 	}
 
