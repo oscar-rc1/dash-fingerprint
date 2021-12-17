@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
 use clap::{value_t, ArgMatches};
 use nalgebra::DVector;
-use std::{fs::File, process::{Command, Stdio}, time::Duration};
+use std::{fs::File, io::Write, process::{Command, Stdio}, time::Duration};
 
 pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 	// Extract and validate parameters
@@ -32,19 +32,50 @@ pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 
 	let vlc = match value_t!(matches, "video", String) {
 		Ok(url) => {
-			let handle =
+			// Spawn process
+
+			let mut handle =
 				Command::new("cvlc")
+					.arg("-I").arg("rc")
+					.arg("--start-paused")
 					.arg(url)
-					.stdin(Stdio::null())
+					.stdin(Stdio::piped())
 					.stdout(Stdio::null())
 					.stderr(Stdio::null())
 					.spawn()
 					.context("Failed to spawn VLC")?;
 
 			print_progress(0.0);
-			std::thread::sleep(Duration::from_millis(10000));
 
-			Some(handle)
+			// Wait until initial buffering is done
+
+			let mut rx_last = get_rx_bytes(&interface)?;
+			let mut idle_count = 0;
+
+			loop {
+				let rx = get_rx_bytes(&interface)?;
+				let rx_rate = rx - rx_last;
+
+				if rx_rate <= 10*epsilon {
+					idle_count += 1;
+				} else {
+					idle_count = 0;
+				}
+
+				if idle_count >= 6 {
+					break;
+				}
+
+				rx_last = rx;
+				std::thread::sleep(Duration::from_millis(1000));
+			}
+
+			// Start playback
+
+			let mut stdin = handle.stdin.take().context("Failed to open VLC stdin")?;
+			stdin.write_all("play\n".as_bytes())?;
+
+			Some((handle, stdin))
 		},
 
 		Err(_) => None,
@@ -53,14 +84,14 @@ pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 	// Run fingerprint process
 
 	let mut d_tr = DVector::zeros(num_samples);
-	let mut rx_last = get_rx_bytes(&interface).unwrap();
+	let mut rx_last = get_rx_bytes(&interface)?;
 	let mut p_last = 0;
 	let mut p = 0;
 	let mut i = 0;
 	let mut t = 0;
 
 	loop {
-		let rx = get_rx_bytes(&interface).unwrap();
+		let rx = get_rx_bytes(&interface)?;
 		let rx_rate = rx - rx_last;
 
 		if rx_rate >= epsilon {
@@ -103,7 +134,7 @@ pub fn fingerprint_network(matches: &ArgMatches) -> Result<()> {
 
 	// Wait for child process
 
-	if let Some(mut vlc) = vlc {
+	if let Some((mut vlc, _)) = vlc {
 		vlc.kill()?;
 	}
 
